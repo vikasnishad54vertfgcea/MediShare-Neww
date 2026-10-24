@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand"><span class="brand-mark">💊</span>MediShare</div>
+    <h1>Welcome back</h1>
+    <p class="auth-sub">Log in to find or share medicine near you.</p>
+
+    <div class="form-error" id="err"></div>
+
+    <form id="login-form">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" name="email" required placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="password" required placeholder="Your password">
+      </div>
+      <label class="checkbox-row" style="justify-content:space-between; display:flex;">
+        <span style="display:flex; gap:9px;"><input type="checkbox">Remember me</span>
+        <a href="#" id="forgot-link">Forgot password?</a>
+      </label>
+      <button class="btn btn-primary btn-block" type="submit">Log in</button>
+    </form>
+    <div class="auth-foot">New to MediShare? <a href="/signup.html">Create an account</a></div>
+    <div class="auth-foot" style="margin-top:14px; font-size:12.5px;">
+      Demo logins — Donor/Recipient: <code>vikas@example.com</code> / <code>password123</code> · Admin: <code>admin@medishare.app</code> / <code>admin123</code>
+    </div>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+if (Auth.token()) location.href = '/dashboard.html';
+
+document.getElementById('forgot-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  showToast('Password reset isn\'t wired up in this demo build yet.');
+});
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('err');
+  errBox.classList.remove('show');
+  const fd = new FormData(e.target);
+  const body = Object.fromEntries(fd.entries());
+  try {
+    const { token, user } = await api('/auth/login', { method: 'POST', body });
+    Auth.save(token, user);
+    location.href = user.role === 'admin' ? '/admin.html' : '/dashboard.html';
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.classList.add('show');
+  }
+});
+</script>
+</body>
+</html>

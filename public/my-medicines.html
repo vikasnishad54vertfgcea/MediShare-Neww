@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Medicines — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="app-shell-root">
+  <main class="app-main">
+    <div class="app-topbar" id="app-topbar-root"></div>
+    <div class="quick-actions" style="margin-top:0;">
+      <a href="/share-medicine.html" class="btn btn-primary btn-sm">➕ Share another medicine</a>
+    </div>
+    <div id="grid" class="med-grid"></div>
+  </main>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+function statusBadge(status) {
+  if (status === 'approved') return '<span class="badge badge-verified">✓ Verified</span>';
+  if (status === 'pending') return '<span class="badge badge-pending">⏳ Pending review</span>';
+  return '<span class="badge badge-rejected">✕ Rejected</span>';
+}
+
+(async function () {
+  if (!initShell('/my-medicines.html', 'My Medicines')) return;
+  const grid = document.getElementById('grid');
+  try {
+    const { medicines } = await api('/medicines/mine');
+    if (!medicines.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="ic">💊</div>You haven't shared any medicine yet.</div>`;
+      return;
+    }
+    grid.innerHTML = medicines.map((m) => `
+      <div class="med-card">
+        <div class="med-thumb">${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : '💊'}</div>
+        <div class="med-body">
+          <div class="med-title-row"><span class="med-name">${m.name} ${m.strength}</span></div>
+          <div class="med-meta">
+            ${statusBadge(m.status)}
+            <span>📦 ${qtyLabel(m)}</span>
+            ${m.status === 'approved' && m.quantity < 1 ? '<span class="badge badge-rejected">Out of stock</span>' : ''}
+          </div>
+          <div style="font-size:12px; color:var(--ink-faint);">Expires ${new Date(m.expiryDate).toLocaleDateString()} · ${m.location}</div>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) { showToast(e.message, 'error'); }
+})();
+</script>
+</body>
+</html>

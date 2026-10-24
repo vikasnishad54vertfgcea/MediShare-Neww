@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediShare — Share Medicines. Reduce Waste. Help Someone.</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <div class="brand"><span class="brand-mark">💊</span>MediShare</div>
+    <div class="nav-links">
+      <a href="/index.html">Home</a>
+      <a href="/find-medicine.html">Find Medicine</a>
+      <a href="/share-medicine.html">Share Medicine</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="#about">About</a>
+    </div>
+    <div class="nav-cta">
+      <a href="/login.html" style="font-weight:600;font-size:14.5px;">Login</a>
+      <a href="/signup.html" class="btn btn-primary btn-sm">Get Started →</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <div class="eyebrow-pill">🌿 Verified medicine sharing, near you</div>
+      <h1>Have extra medicine? Someone may need it.</h1>
+      <p class="lede">Share eligible unused medicines with people who need them nearby — every listing is safety-checked and verified before it reaches anyone.</p>
+      <div class="hero-actions">
+        <a href="/find-medicine.html" class="btn btn-primary">Find Medicine</a>
+        <a href="/share-medicine.html" class="btn btn-ghost">Share Medicine</a>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="float-card" style="top:10px; left:10px; animation-delay:0s;"><span class="dot"></span>💊 Medicine Box</div>
+      <div class="float-card" style="top:150px; left:120px; animation-delay:1.2s;">💠 MediShare</div>
+      <div class="float-card" style="top:280px; left:20px; animation-delay:2.4s;">🧑 Person, helped</div>
+      <div class="float-card" style="top:60px; left:250px; animation-delay:.6s;">✓ Verified listing</div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how-it-works">
+  <div class="container">
+    <div class="section-head">
+      <h2>How MediShare works</h2>
+      <p>A simple, three-step flow — with safety checks built into every listing.</p>
+    </div>
+    <div class="steps">
+      <div class="step-card">
+        <div class="step-num">01 — LIST</div>
+        <div class="step-icon">💊</div>
+        <h3>List</h3>
+        <p>List your eligible unused medicine with expiry and batch details.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">02 — MATCH</div>
+        <div class="step-icon">🔍</div>
+        <h3>Match</h3>
+        <p>Our smart matching finds the most suitable nearby medicine for a request.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">03 — SHARE</div>
+        <div class="step-icon">🤝</div>
+        <h3>Share</h3>
+        <p>Connect with the other person and complete a safe, tracked handover.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="about">
+  <div class="container">
+    <div class="section-head">
+      <h2>Real impact, tracked honestly</h2>
+      <p>These numbers reflect actual activity on this MediShare instance.</p>
+    </div>
+    <div class="impact-grid">
+      <div class="impact-card"><div class="impact-num count-up" id="stat-shared">0</div><div class="impact-label">Medicines Shared</div></div>
+      <div class="impact-card"><div class="impact-num count-up" id="stat-requests">0</div><div class="impact-label">Successful Requests</div></div>
+      <div class="impact-card"><div class="impact-num count-up" id="stat-people">0</div><div class="impact-label">People Helped</div></div>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">
+    MediShare — a medicine donation &amp; matching platform. Not a substitute for professional medical advice; always check with a pharmacist before use.
+  </div>
+</footer>
+
+<script src="/js/common.js"></script>
+<script>
+function animateCount(el, target) {
+  const duration = 900;
+  const start = performance.now();
+  function tick(now) {
+    const p = Math.min(1, (now - start) / duration);
+    el.textContent = Math.floor(p * target).toLocaleString();
+    if (p < 1) requestAnimationFrame(tick);
+    else el.textContent = target.toLocaleString();
+  }
+  requestAnimationFrame(tick);
+}
+fetch('/api/public/stats').then(r => r.json()).then(d => {
+  animateCount(document.getElementById('stat-shared'), d.medicinesShared || 0);
+  animateCount(document.getElementById('stat-requests'), d.successfulRequests || 0);
+  animateCount(document.getElementById('stat-people'), d.peopleHelped || 0);
+}).catch(() => {});
+</script>
+</body>
+</html>

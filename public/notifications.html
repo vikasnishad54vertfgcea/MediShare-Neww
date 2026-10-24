@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notifications — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="app-shell-root">
+  <main class="app-main">
+    <div class="app-topbar" id="app-topbar-root"></div>
+    <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+      <button class="btn btn-ghost btn-sm" id="mark-all">Mark all as read</button>
+    </div>
+    <div id="list"></div>
+  </main>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+const ICONS = {
+  new_request: '📦', status_update: '🔔', verification: '🛡️', message: '💬',
+};
+
+async function load() {
+  const list = document.getElementById('list');
+  try {
+    const { notifications } = await api('/notifications');
+    if (!notifications.length) {
+      list.innerHTML = `<div class="empty-state"><div class="ic">🔔</div>No notifications yet.</div>`;
+      return;
+    }
+    list.innerHTML = notifications.map((n) => `
+      <div class="list-row ${n.read ? '' : 'unread'}" data-id="${n.id}">
+        <div class="thumb">${ICONS[n.type] || '🔔'}</div>
+        <div class="info">
+          <div class="title">${n.message}</div>
+          <div class="sub">${timeAgo(n.createdAt)}</div>
+        </div>
+        ${!n.read ? '<button class="btn btn-ghost btn-sm" data-mark>Mark read</button>' : ''}
+      </div>
+    `).join('');
+
+    list.querySelectorAll('[data-mark]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('.list-row');
+        try {
+          await api(`/notifications/${row.dataset.id}/read`, { method: 'PATCH' });
+          row.classList.remove('unread');
+          btn.remove();
+        } catch (e) { showToast(e.message, 'error'); }
+      });
+    });
+  } catch (e) { list.innerHTML = `<div class="empty-state">Couldn't load notifications: ${e.message}</div>`; }
+}
+
+document.getElementById('mark-all').addEventListener('click', async () => {
+  try { await api('/notifications/read-all', { method: 'PATCH' }); load(); } catch (e) { showToast(e.message, 'error'); }
+});
+
+if (initShell('/notifications.html', 'Notifications')) load();
+</script>
+</body>
+</html>

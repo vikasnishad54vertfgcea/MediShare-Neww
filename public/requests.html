@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Requests — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="app-shell-root">
+  <main class="app-main">
+    <div class="app-topbar" id="app-topbar-root"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="mine">My Requests</button>
+      <button class="tab-btn" data-tab="incoming">Incoming Requests</button>
+    </div>
+
+    <div id="panel-mine"></div>
+    <div id="panel-incoming" style="display:none;"></div>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="review-backdrop">
+  <div class="modal">
+    <h3>How was your experience?</h3>
+    <p style="font-size:13.5px;">Rate the donor for this completed request.</p>
+    <div class="star-input" id="star-input">
+      <span data-v="1">★</span><span data-v="2">★</span><span data-v="3">★</span><span data-v="4">★</span><span data-v="5">★</span>
+    </div>
+    <div class="field" style="margin-top:14px;"><textarea id="review-comment" rows="3" placeholder="Optional comment"></textarea></div>
+    <div style="display:flex; gap:10px; margin-top:10px;">
+      <button class="btn btn-ghost" id="review-cancel" style="flex:1;">Skip</button>
+      <button class="btn btn-primary" id="review-submit" style="flex:1;">Submit rating</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+const STEPS = [
+  { key: 'sent', label: 'Request Sent' },
+  { key: 'accepted', label: 'Donor Accepted' },
+  { key: 'handover_pending', label: 'Handover Pending' },
+  { key: 'completed', label: 'Completed' },
+];
+
+function timelineHtml(status) {
+  if (status === 'declined') {
+    return `<div style="font-size:13px; color:var(--danger); font-weight:600; margin:12px 0 4px;">✕ This request was declined by the donor.</div>`;
+  }
+  if (status === 'cancelled') {
+    return `<div style="font-size:13px; color:var(--ink-faint); font-weight:600; margin:12px 0 4px;">— This request was cancelled.</div>`;
+  }
+  const currentIdx = STEPS.findIndex((s) => s.key === status);
+  return `<div class="timeline">
+    ${STEPS.map((s, i) => {
+      const state = i < currentIdx ? 'done' : i === currentIdx ? 'current' : '';
+      const icon = i < currentIdx ? '✓' : i === currentIdx ? '●' : '○';
+      return `<div class="timeline-step ${state}">
+        <div class="timeline-line"></div>
+        <div class="timeline-dot">${icon}</div>
+        <div class="timeline-label">${s.label}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function urgencyBadge(u) {
+  if (u === 'urgent') return '<span class="badge badge-urgent">🔴 Urgent</span>';
+  if (u === 'soon') return '<span class="badge badge-soon">🟡 Needed Soon</span>';
+  return '<span class="badge badge-normal">🟢 Normal</span>';
+}
+
+function qtyUnitLabel(r) {
+  const unit = r.medicine?.unit || 'unit';
+  const plural = r.quantity > 1 && !/^[a-z]{1,3}$/.test(unit) ? unit + 's' : unit;
+  return `${r.quantity} ${plural}`;
+}
+
+function contactBoxHtml(r, otherPartyLabel) {
+  if (!r.contactVisible) return '';
+  const other = r.__viewerIsDonor ? r.recipient : r.donor;
+  if (!other?.mobile) return '';
+  return `<div style="font-size:12.5px; background:var(--teal-tint); color:var(--teal-dark); padding:7px 11px; border-radius:var(--radius-sm); margin-top:10px; display:inline-block;">📞 ${otherPartyLabel}: ${other.mobile}</div>`;
+}
+
+let pendingReviewRequestId = null;
+
+async function loadMine() {
+  const panel = document.getElementById('panel-mine');
+  try {
+    const { requests } = await api('/requests/mine');
+    if (!requests.length) {
+      panel.innerHTML = `<div class="empty-state"><div class="ic">📦</div>You haven't requested any medicine yet. <a href="/find-medicine.html">Find medicine →</a></div>`;
+      return;
+    }
+    panel.innerHTML = requests.map((r) => {
+      r.__viewerIsDonor = false;
+      return `
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div>
+            <strong>${r.medicine?.name || 'Medicine'} ${r.medicine?.strength || ''}</strong>
+            <div style="font-size:12.5px; color:var(--ink-faint); margin-top:2px;">${qtyUnitLabel(r)} · From ${r.donor?.name || 'a donor'} · ${timeAgoSafe(r.createdAt)}</div>
+          </div>
+          ${urgencyBadge(r.urgency)}
+        </div>
+        ${timelineHtml(r.status)}
+        ${contactBoxHtml(r, 'Donor')}
+        <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          ${!['declined','cancelled'].includes(r.status) ? `<button class="btn btn-ghost btn-sm" onclick="openChatModal(${r.id}, '${escapeHtml(r.donor?.name || 'Donor')}')">💬 Message donor${r.unreadMessages ? ` (${r.unreadMessages})` : ''}</button>` : ''}
+          ${r.canCancel ? `<button class="btn btn-danger btn-sm" data-cancel="${r.id}">Cancel request</button>` : ''}
+          <span id="rev-slot-${r.id}"></span>
+        </div>
+      </div>
+    `; }).join('');
+
+    document.querySelectorAll('[data-cancel]').forEach((btn) => btn.addEventListener('click', () => cancelRequest(btn.dataset.cancel)));
+
+    requests.filter((r) => r.status === 'completed' && !r.reviewed).forEach((r) => {
+      const slot = document.getElementById(`rev-slot-${r.id}`);
+      if (slot) slot.innerHTML = `<button class="btn btn-secondary btn-sm" onclick="openReview(${r.id})">⭐ Rate this donor</button>`;
+    });
+    requests.filter((r) => r.status === 'completed' && r.reviewed).forEach((r) => {
+      const slot = document.getElementById(`rev-slot-${r.id}`);
+      if (slot) slot.innerHTML = `<span style="font-size:12.5px; color:var(--ink-faint);">✓ Rated</span>`;
+    });
+  } catch (e) { panel.innerHTML = `<div class="empty-state">Couldn't load requests: ${e.message}</div>`; }
+}
+
+async function cancelRequest(id) {
+  if (!confirm('Cancel this request? The donor will be notified.')) return;
+  try {
+    await api(`/requests/${id}/cancel`, { method: 'PATCH' });
+    showToast('Request cancelled', 'success');
+    loadMine();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openReview(reqId) {
+  pendingReviewRequestId = reqId;
+  document.querySelectorAll('#star-input span').forEach((s) => s.classList.remove('filled'));
+  document.getElementById('review-comment').value = '';
+  document.getElementById('review-backdrop').classList.add('show');
+}
+
+document.getElementById('review-cancel').addEventListener('click', () => document.getElementById('review-backdrop').classList.remove('show'));
+
+let selectedRating = 0;
+document.querySelectorAll('#star-input span').forEach((star) => {
+  star.addEventListener('click', () => {
+    selectedRating = Number(star.dataset.v);
+    document.querySelectorAll('#star-input span').forEach((s) => s.classList.toggle('filled', Number(s.dataset.v) <= selectedRating));
+  });
+});
+
+document.getElementById('review-submit').addEventListener('click', async () => {
+  if (!selectedRating) { showToast('Pick a star rating first', 'error'); return; }
+  try {
+    await api(`/requests/${pendingReviewRequestId}/review`, { method: 'POST', body: { rating: selectedRating, comment: document.getElementById('review-comment').value } });
+    document.getElementById('review-backdrop').classList.remove('show');
+    showToast('Thanks for your feedback!', 'success');
+    document.getElementById(`rev-slot-${pendingReviewRequestId}`).innerHTML = `<span style="font-size:12.5px; color:var(--ink-faint);">✓ Rated</span>`;
+  } catch (e) { showToast(e.message, 'error'); }
+});
+
+async function loadIncoming() {
+  const panel = document.getElementById('panel-incoming');
+  try {
+    const { requests } = await api('/requests/incoming');
+    if (!requests.length) {
+      panel.innerHTML = `<div class="empty-state"><div class="ic">🔔</div>No incoming requests yet.</div>`;
+      return;
+    }
+    panel.innerHTML = requests.map((r) => {
+      r.__viewerIsDonor = true;
+      return `
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div>
+            <strong>${r.medicine?.name || 'Medicine'} ${r.medicine?.strength || ''}</strong>
+            <div style="font-size:12.5px; color:var(--ink-faint); margin-top:2px;">Requested by ${r.recipient?.name || 'someone'} · ${qtyUnitLabel(r)} · ${timeAgoSafe(r.createdAt)}</div>
+            ${r.reason ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:4px;">"${escapeHtml(r.reason)}"</div>` : ''}
+          </div>
+          ${urgencyBadge(r.urgency)}
+        </div>
+        ${timelineHtml(r.status)}
+        ${contactBoxHtml(r, 'Recipient')}
+        <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;" id="actions-${r.id}">
+          ${!['declined','cancelled'].includes(r.status) ? `<button class="btn btn-ghost btn-sm" onclick="openChatModal(${r.id}, '${escapeHtml(r.recipient?.name || 'Recipient')}')">💬 Message recipient${r.unreadMessages ? ` (${r.unreadMessages})` : ''}</button>` : ''}
+          ${actionButtons(r)}
+        </div>
+      </div>
+    `; }).join('');
+
+    document.querySelectorAll('[data-action]').forEach((btn) => {
+      btn.addEventListener('click', () => handleAction(btn.dataset.action, btn.dataset.id));
+    });
+  } catch (e) { panel.innerHTML = `<div class="empty-state">Couldn't load requests: ${e.message}</div>`; }
+}
+
+function actionButtons(r) {
+  if (r.status === 'sent') return `<button class="btn btn-primary btn-sm" data-action="accept" data-id="${r.id}">Accept</button><button class="btn btn-danger btn-sm" data-action="decline" data-id="${r.id}">Decline</button>`;
+  if (r.status === 'accepted') return `<button class="btn btn-secondary btn-sm" data-action="handover" data-id="${r.id}">Mark handover in progress</button>`;
+  if (r.status === 'handover_pending') return `<button class="btn btn-primary btn-sm" data-action="complete" data-id="${r.id}">Mark completed</button>`;
+  return '';
+}
+
+async function handleAction(action, id) {
+  try {
+    await api(`/requests/${id}/${action}`, { method: 'PATCH' });
+    showToast('Updated ✓', 'success');
+    loadIncoming();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function timeAgoSafe(iso) { try { return timeAgo(iso); } catch { return ''; } }
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/'/g, '&#39;'); }
+
+document.querySelectorAll('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('panel-mine').style.display = tab === 'mine' ? 'block' : 'none';
+    document.getElementById('panel-incoming').style.display = tab === 'incoming' ? 'block' : 'none';
+  });
+});
+
+if (initShell('/requests.html', 'My Requests')) { loadMine(); loadIncoming(); }
+</script>
+</body>
+</html>

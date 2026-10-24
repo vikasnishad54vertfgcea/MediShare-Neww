@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saved — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="app-shell-root">
+  <main class="app-main">
+    <div class="app-topbar" id="app-topbar-root"></div>
+    <p style="margin-top:-10px;">Medicines you've bookmarked to request later.</p>
+    <div id="grid" class="med-grid"></div>
+  </main>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+function statusNote(m) {
+  if (m.status === 'pending') return '<span class="badge badge-pending">⏳ Awaiting verification</span>';
+  if (m.status === 'rejected') return '<span class="badge badge-rejected">No longer available</span>';
+  if (m.quantity < 1) return '<span class="badge badge-rejected">Out of stock</span>';
+  return '<span class="badge badge-verified">✓ Available</span>';
+}
+
+async function load() {
+  const grid = document.getElementById('grid');
+  try {
+    const { medicines } = await api('/users/saved');
+    if (!medicines.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="ic">❤️</div>Nothing saved yet. Tap the heart on any medicine to bookmark it here.</div>`;
+      return;
+    }
+    grid.innerHTML = medicines.map((m) => `
+      <a class="med-card" href="/medicine-details.html?id=${m.id}" style="color:inherit;">
+        <div class="med-thumb">${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : '💊'}${saveHeartHtml(m.id, true)}</div>
+        <div class="med-body">
+          <div class="med-title-row"><span class="med-name">${m.name} ${m.strength}</span></div>
+          <div class="med-meta">${statusNote(m)}<span>📦 ${qtyLabel(m)}</span></div>
+          <div style="font-size:12px; color:var(--ink-faint);">${m.location} · Shared by ${m.donor?.name || 'a donor'}</div>
+        </div>
+      </a>
+    `).join('');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+if (initShell('/saved.html', 'Saved Medicines')) load();
+</script>
+</body>
+</html>

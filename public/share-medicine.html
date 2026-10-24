@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Share Medicine — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="app-shell-root">
+  <main class="app-main">
+    <div class="app-topbar" id="app-topbar-root"></div>
+
+    <div class="card" style="max-width:640px;">
+      <h2 style="font-size:19px;">Medicine Details</h2>
+      <p style="font-size:13.5px;">We automatically check the expiry date — expired medicine can't be listed.</p>
+
+      <div class="form-error" id="err"></div>
+      <div class="form-success" id="ok"></div>
+
+      <form id="share-form">
+        <div class="field-row">
+          <div class="field"><label>Medicine Name</label><input type="text" name="name" required placeholder="e.g. Paracetamol"></div>
+          <div class="field"><label>Strength</label><input type="text" name="strength" required placeholder="e.g. 500mg"></div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Medicine Type</label>
+            <select name="type" required>
+              <option value="">Select type</option>
+              <option>Tablet</option><option>Capsule</option><option>Syrup</option>
+              <option>Injection</option><option>Ointment</option><option>Drops</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label>Quantity</label><input type="number" min="1" name="quantity" required placeholder="e.g. 2"></div>
+        </div>
+        <div class="field">
+          <label>Quantity Unit</label>
+          <select name="unit" required>
+            <option value="">What does the quantity count?</option>
+            <option>Strip</option><option>Tablet</option><option>Capsule</option>
+            <option>Bottle</option><option>Vial</option><option>Tube</option>
+            <option>Sachet</option><option>Box</option><option>Pack</option><option>ml</option><option>Other</option>
+          </select>
+          <div class="field-hint">e.g. "2 Strips" of tablets, or "1 Bottle" of syrup, or "6 Tablets" if loose.</div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Expiry Date</label><input type="date" name="expiryDate" required></div>
+          <div class="field"><label>Batch Number</label><input type="text" name="batchNumber" required placeholder="e.g. PCM2025A"></div>
+        </div>
+        <div class="field"><label>Manufacturer</label><input type="text" name="manufacturer" required placeholder="e.g. Cipla"></div>
+        <div class="field"><label>Storage Condition</label><input type="text" name="storageCondition" placeholder="e.g. Room temperature, dry place"></div>
+        <div class="field"><label>Medicine Photo (optional)</label><input type="file" name="photo" accept="image/png,image/jpeg,image/webp"></div>
+        <div class="field">
+          <label>Location</label>
+          <input type="text" name="location" required placeholder="Area, City">
+          <div class="field-hint" id="loc-hint">Detecting your location for accurate distance matching…</div>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">List this medicine</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+if (!initShell('/share-medicine.html', 'Share Medicine')) { }
+
+let coords = null;
+getLocation().then((c) => {
+  coords = c;
+  document.getElementById('loc-hint').textContent = c
+    ? 'Location detected — this will be used to match nearby requests.'
+    : 'Location not detected — nearby matching may be less accurate.';
+});
+
+const todayStr = new Date().toISOString().slice(0, 10);
+document.querySelector('input[name=expiryDate]').min = todayStr;
+
+document.getElementById('share-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('err');
+  const okBox = document.getElementById('ok');
+  errBox.classList.remove('show'); okBox.classList.remove('show');
+
+  const fd = new FormData(e.target);
+  if (coords) { fd.append('lat', coords.lat); fd.append('lng', coords.lng); }
+
+  const submitBtn = e.target.querySelector('button[type=submit]');
+  submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
+
+  try {
+    await api('/medicines', { method: 'POST', body: fd, isForm: true });
+    okBox.textContent = 'Listed! It will appear to recipients once an admin verifies it.';
+    okBox.classList.add('show');
+    e.target.reset();
+    setTimeout(() => location.href = '/my-medicines.html', 1400);
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.classList.add('show');
+  } finally {
+    submitBtn.disabled = false; submitBtn.textContent = 'List this medicine';
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profile — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="app-shell-root">
+  <main class="app-main">
+    <div class="app-topbar" id="app-topbar-root"></div>
+
+    <div class="card" style="max-width:600px; margin-bottom:20px;">
+      <div style="display:flex; align-items:center; gap:16px;">
+        <div class="avatar-circle" style="width:56px; height:56px; font-size:20px;" id="avatar"></div>
+        <div>
+          <h2 style="font-size:20px; margin:0;" id="p-name"></h2>
+          <div style="font-size:13.5px; color:var(--ink-faint);" id="p-meta"></div>
+        </div>
+      </div>
+      <div class="stat-grid" style="grid-template-columns:repeat(3,1fr); margin-top:22px; margin-bottom:0;">
+        <div class="stat-card"><div class="num" id="p-shared">0</div><div class="lbl">Medicines Shared</div></div>
+        <div class="stat-card"><div class="num" id="p-success">0</div><div class="lbl">Successful Requests</div></div>
+        <div class="stat-card"><div class="num" id="p-rating">—</div><div class="lbl">Rating</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="max-width:600px;">
+      <h3 style="font-size:16px;">Edit profile</h3>
+      <form id="profile-form">
+        <div class="field"><label>Name</label><input type="text" name="name" id="f-name"></div>
+        <div class="field"><label>Location</label><input type="text" name="location" id="f-location"></div>
+        <div class="field">
+          <label>Privacy</label>
+          <label class="checkbox-row"><input type="checkbox" id="f-show-mobile">Show my mobile number to matched users</label>
+          <label class="checkbox-row"><input type="checkbox" id="f-show-email">Show my email to matched users</label>
+        </div>
+        <button class="btn btn-primary" type="submit">Save changes</button>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+(async function () {
+  if (!initShell('/profile.html', 'Profile')) return;
+  try {
+    const { user } = await api('/auth/me');
+    Auth.updateUser(user);
+    document.getElementById('avatar').textContent = initials(user.name);
+    document.getElementById('p-name').textContent = user.name;
+    document.getElementById('p-meta').textContent = `${user.location || '—'} · ${user.userType}`;
+    document.getElementById('p-shared').textContent = user.medicinesShared || 0;
+    document.getElementById('p-success').textContent = user.successfulRequests || 0;
+    document.getElementById('p-rating').textContent = user.ratingCount ? `⭐ ${user.rating}` : '—';
+
+    document.getElementById('f-name').value = user.name;
+    document.getElementById('f-location').value = user.location || '';
+    document.getElementById('f-show-mobile').checked = !!(user.privacy && user.privacy.showMobile);
+    document.getElementById('f-show-email').checked = !!(user.privacy && user.privacy.showEmail);
+  } catch (e) { showToast(e.message, 'error'); }
+})();
+
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const { user } = await api('/users/profile', { method: 'PATCH', body: {
+      name: document.getElementById('f-name').value,
+      location: document.getElementById('f-location').value,
+      privacy: {
+        showMobile: document.getElementById('f-show-mobile').checked,
+        showEmail: document.getElementById('f-show-email').checked,
+      },
+    }});
+    Auth.updateUser(user);
+    showToast('Profile updated ✓', 'success');
+    renderTopbar('Profile');
+  } catch (e) { showToast(e.message, 'error'); }
+});
+</script>
+</body>
+</html>

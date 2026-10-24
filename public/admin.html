@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar">
+    <div class="brand"><span class="brand-mark">💊</span>MediShare Admin</div>
+    <a class="side-link active" data-tab="dashboard"><span class="ic">📊</span>Dashboard</a>
+    <a class="side-link" data-tab="verification"><span class="ic">🛡️</span>Verification</a>
+    <a class="side-link" data-tab="medicines"><span class="ic">💊</span>Medicines</a>
+    <a class="side-link" data-tab="requests"><span class="ic">📦</span>Requests</a>
+    <a class="side-link" data-tab="urgent"><span class="ic">🚨</span>Urgent Requests</a>
+    <a class="side-link" data-tab="users"><span class="ic">👥</span>Users</a>
+    <a class="side-link" data-tab="analytics"><span class="ic">📈</span>Analytics</a>
+    <div class="sidebar-spacer"></div>
+    <div class="side-bottom">
+      <a class="side-link" href="/dashboard.html"><span class="ic">🔁</span>User view</a>
+      <a class="side-link" href="#" id="logout-link"><span class="ic">🚪</span>Logout</a>
+    </div>
+  </aside>
+
+  <main class="app-main">
+    <div class="app-topbar"><h1 id="page-title">Dashboard</h1></div>
+
+    <section id="tab-dashboard">
+      <div class="admin-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div class="stat-card"><div class="num" id="s-users">0</div><div class="lbl">Users</div></div>
+        <div class="stat-card"><div class="num" id="s-medicines">0</div><div class="lbl">Medicines</div></div>
+        <div class="stat-card"><div class="num" id="s-pending">0</div><div class="lbl">Pending Verification</div></div>
+        <div class="stat-card"><div class="num" id="s-active">0</div><div class="lbl">Active Requests</div></div>
+        <div class="stat-card"><div class="num" id="s-completed">0</div><div class="lbl">Completed Shares</div></div>
+        <div class="stat-card"><div class="num" id="s-urgent">0</div><div class="lbl">Urgent Requests</div></div>
+      </div>
+    </section>
+
+    <section id="tab-verification" style="display:none;">
+      <div id="verification-list"></div>
+    </section>
+
+    <section id="tab-medicines" style="display:none;">
+      <div class="filters-bar">
+        <select id="med-status-filter">
+          <option value="">All statuses</option>
+          <option value="approved">Approved</option>
+          <option value="pending">Pending</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div id="medicines-list"></div>
+    </section>
+
+    <section id="tab-requests" style="display:none;">
+      <div id="requests-list"></div>
+    </section>
+
+    <section id="tab-urgent" style="display:none;">
+      <div id="urgent-list"></div>
+    </section>
+
+    <section id="tab-users" style="display:none;">
+      <div id="users-list"></div>
+    </section>
+
+    <section id="tab-analytics" style="display:none;">
+      <div class="two-col-charts">
+        <div class="chart-card"><h4>Medicine Sharing (last 6 months)</h4><canvas id="chart-monthly" height="180"></canvas></div>
+        <div class="chart-card"><h4>Successful vs Rejected vs Pending</h4><canvas id="chart-outcome" height="180"></canvas></div>
+      </div>
+      <div class="two-col-charts">
+        <div class="chart-card"><h4>Most Requested Medicines</h4><canvas id="chart-requested" height="200"></canvas></div>
+        <div class="chart-card"><h4>Area-wise Demand</h4><canvas id="chart-area" height="200"></canvas></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+if (!Auth.requireAdmin()) { /* redirected */ }
+
+document.getElementById('logout-link').addEventListener('click', (e) => { e.preventDefault(); Auth.logout(); });
+
+const TITLES = { dashboard: 'Dashboard', verification: 'Verification Queue', medicines: 'Medicines', requests: 'Requests', urgent: 'Urgent Requests', users: 'Users', analytics: 'Analytics' };
+
+document.querySelectorAll('.side-link[data-tab]').forEach((link) => {
+  link.addEventListener('click', () => {
+    document.querySelectorAll('.side-link[data-tab]').forEach((l) => l.classList.remove('active'));
+    link.classList.add('active');
+    const tab = link.dataset.tab;
+    document.querySelectorAll('main > section').forEach((s) => s.style.display = 'none');
+    document.getElementById(`tab-${tab}`).style.display = 'block';
+    document.getElementById('page-title').textContent = TITLES[tab];
+    loaders[tab] && loaders[tab]();
+  });
+});
+
+async function loadStats() {
+  try {
+    const s = await api('/admin/stats');
+    document.getElementById('s-users').textContent = s.users;
+    document.getElementById('s-medicines').textContent = s.medicines;
+    document.getElementById('s-pending').textContent = s.pendingVerification;
+    document.getElementById('s-active').textContent = s.activeRequests;
+    document.getElementById('s-completed').textContent = s.completedShares;
+    document.getElementById('s-urgent').textContent = s.urgentRequests;
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function medRow(m, withActions) {
+  const statusBadge = m.status === 'approved' ? '<span class="badge badge-verified">✓ Approved</span>' : m.status === 'pending' ? '<span class="badge badge-pending">⏳ Pending</span>' : '<span class="badge badge-rejected">✕ Rejected</span>';
+  return `<div class="list-row">
+    <div class="thumb">${m.photo ? `<img src="${m.photo}">` : '💊'}</div>
+    <div class="info">
+      <div class="title">${m.name} ${m.strength} <span style="font-weight:400; color:var(--ink-faint);">· ${m.manufacturer}</span></div>
+      <div class="sub">By ${m.donor?.name || 'unknown'} · ${qtyLabel(m)} · Expiry ${new Date(m.expiryDate).toLocaleDateString()} · Batch ${m.batchNumber}</div>
+    </div>
+    ${statusBadge}
+    ${withActions && m.status === 'pending' ? `
+      <div class="actions">
+        <button class="btn btn-primary btn-sm" data-verify="${m.id}">Approve</button>
+        <button class="btn btn-danger btn-sm" data-reject="${m.id}">Reject</button>
+      </div>` : ''}
+  </div>`;
+}
+
+async function loadVerification() {
+  const list = document.getElementById('verification-list');
+  try {
+    const { medicines } = await api('/admin/medicines?status=pending');
+    if (!medicines.length) { list.innerHTML = `<div class="empty-state"><div class="ic">✅</div>No medicines waiting for review.</div>`; return; }
+    list.innerHTML = medicines.map((m) => medRow(m, true)).join('');
+    list.querySelectorAll('[data-verify]').forEach((b) => b.addEventListener('click', () => act(b.dataset.verify, 'verify')));
+    list.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => act(b.dataset.reject, 'reject')));
+  } catch (e) { list.innerHTML = `Error: ${e.message}`; }
+}
+
+async function act(id, action) {
+  try {
+    await api(`/admin/medicines/${id}/${action}`, { method: 'PATCH' });
+    showToast(action === 'verify' ? 'Approved ✓' : 'Rejected', 'success');
+    loadVerification(); loadStats();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadMedicines() {
+  const list = document.getElementById('medicines-list');
+  const status = document.getElementById('med-status-filter').value;
+  try {
+    const { medicines } = await api(`/admin/medicines${status ? `?status=${status}` : ''}`);
+    list.innerHTML = medicines.length ? medicines.map((m) => medRow(m, true)).join('') : `<div class="empty-state">No medicines found.</div>`;
+    list.querySelectorAll('[data-verify]').forEach((b) => b.addEventListener('click', () => act(b.dataset.verify, 'verify').then(loadMedicines)));
+    list.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => act(b.dataset.reject, 'reject').then(loadMedicines)));
+  } catch (e) { list.innerHTML = `Error: ${e.message}`; }
+}
+document.getElementById('med-status-filter').addEventListener('change', loadMedicines);
+
+function urgencyBadge(u) {
+  if (u === 'urgent') return '<span class="badge badge-urgent">🔴 Urgent</span>';
+  if (u === 'soon') return '<span class="badge badge-soon">🟡 Soon</span>';
+  return '<span class="badge badge-normal">🟢 Normal</span>';
+}
+function statusLabel(s) {
+  return ({ sent: 'Sent', accepted: 'Accepted', handover_pending: 'Handover Pending', completed: 'Completed', declined: 'Declined' })[s] || s;
+}
+
+async function loadRequests() {
+  const list = document.getElementById('requests-list');
+  try {
+    const { requests } = await api('/admin/requests');
+    list.innerHTML = requests.length ? requests.map((r) => `
+      <div class="list-row">
+        <div class="thumb">📦</div>
+        <div class="info">
+          <div class="title">${r.medicineName}</div>
+          <div class="sub">${r.recipient?.name || '—'} ⬅ ${r.donor?.name || '—'} · ${statusLabel(r.status)}</div>
+        </div>
+        ${urgencyBadge(r.urgency)}
+      </div>
+    `).join('') : `<div class="empty-state">No requests yet.</div>`;
+  } catch (e) { list.innerHTML = `Error: ${e.message}`; }
+}
+
+async function loadUrgent() {
+  const list = document.getElementById('urgent-list');
+  try {
+    const { requests } = await api('/admin/requests');
+    const urgent = requests.filter((r) => r.urgency === 'urgent' && !['completed', 'declined'].includes(r.status));
+    list.innerHTML = urgent.length ? urgent.map((r) => `
+      <div class="list-row">
+        <div class="thumb">🚨</div>
+        <div class="info"><div class="title">${r.medicineName}</div><div class="sub">${r.recipient?.name || '—'} ⬅ ${r.donor?.name || '—'} · ${statusLabel(r.status)}</div></div>
+      </div>
+    `).join('') : `<div class="empty-state"><div class="ic">✅</div>No urgent requests right now.</div>`;
+  } catch (e) { list.innerHTML = `Error: ${e.message}`; }
+}
+
+async function loadUsers() {
+  const list = document.getElementById('users-list');
+  try {
+    const { users } = await api('/admin/users');
+    list.innerHTML = users.map((u) => `
+      <div class="list-row">
+        <div class="thumb">${initials(u.name)}</div>
+        <div class="info">
+          <div class="title">${u.name} <span style="font-weight:400; color:var(--ink-faint);">· ${u.email}</span></div>
+          <div class="sub">${u.userType} · Shared ${u.medicinesShared} · Received ${u.successfulRequests}${u.rating ? ' · ⭐ ' + u.rating : ''}</div>
+        </div>
+        ${u.role === 'admin' ? '<span class="badge badge-verified">Admin</span>' : ''}
+      </div>
+    `).join('');
+  } catch (e) { list.innerHTML = `Error: ${e.message}`; }
+}
+
+let charts = {};
+function upsertChart(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), config);
+}
+
+async function loadAnalytics() {
+  try {
+    const a = await api('/admin/analytics');
+    upsertChart('chart-monthly', {
+      type: 'line',
+      data: { labels: a.monthly.map(m => m.label), datasets: [{ label: 'Medicines listed', data: a.monthly.map(m => m.count), borderColor: '#0e6e5c', backgroundColor: 'rgba(14,110,92,0.12)', fill: true, tension: 0.35 }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+    });
+    upsertChart('chart-outcome', {
+      type: 'doughnut',
+      data: { labels: ['Completed', 'Declined', 'In progress'], datasets: [{ data: [a.successful, a.rejected, a.pending], backgroundColor: ['#0e6e5c', '#c14545', '#c98a2c'] }] },
+    });
+    upsertChart('chart-requested', {
+      type: 'bar',
+      data: { labels: a.mostRequested.map(m => m.name), datasets: [{ label: 'Requests', data: a.mostRequested.map(m => m.count), backgroundColor: '#0e6e5c' }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+    });
+    upsertChart('chart-area', {
+      type: 'bar',
+      data: { labels: a.areaDemand.map(x => x.area), datasets: [{ label: 'Requests', data: a.areaDemand.map(x => x.count), backgroundColor: '#c98a2c' }] },
+      options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
+    });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+const loaders = {
+  dashboard: loadStats,
+  verification: loadVerification,
+  medicines: loadMedicines,
+  requests: loadRequests,
+  urgent: loadUrgent,
+  users: loadUsers,
+  analytics: loadAnalytics,
+};
+
+loadStats();
+</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Find Medicine — MediShare</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="app-shell-root">
+  <main class="app-main">
+    <div class="app-topbar" id="app-topbar-root"></div>
+
+    <div class="filters-bar">
+      <div class="search-input-wrap">
+        <span class="ic">🔍</span>
+        <input type="text" id="q" placeholder="Search medicine name...">
+      </div>
+      <select id="f-type">
+        <option value="">All types</option>
+        <option>Tablet</option><option>Capsule</option><option>Syrup</option>
+        <option>Injection</option><option>Ointment</option><option>Drops</option><option>Other</option>
+      </select>
+      <select id="f-distance">
+        <option value="">Any distance</option>
+        <option value="2">Within 2 km</option>
+        <option value="5">Within 5 km</option>
+        <option value="10">Within 10 km</option>
+      </select>
+      <label style="display:flex; align-items:center; gap:6px; font-size:13.5px; color:var(--ink-soft);">
+        <input type="checkbox" id="f-verified"> Verified only
+      </label>
+    </div>
+
+    <div id="results-meta" style="font-size:13px; color:var(--ink-faint); margin-bottom:14px;"></div>
+    <div id="results-grid" class="med-grid"></div>
+  </main>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+let userCoords = null;
+let debounceT = null;
+let savedIds = [];
+
+async function search() {
+  const grid = document.getElementById('results-grid');
+  grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Searching…</div>`;
+  const params = new URLSearchParams();
+  const q = document.getElementById('q').value.trim();
+  const type = document.getElementById('f-type').value;
+  const dist = document.getElementById('f-distance').value;
+  const verifiedOnly = document.getElementById('f-verified').checked;
+  if (q) params.set('q', q);
+  if (type) params.set('type', type);
+  if (dist) params.set('maxDistance', dist);
+  if (verifiedOnly) params.set('verifiedOnly', 'true');
+  if (userCoords) { params.set('lat', userCoords.lat); params.set('lng', userCoords.lng); }
+
+  try {
+    const { medicines } = await api(`/medicines?${params.toString()}`);
+    document.getElementById('results-meta').textContent = `${medicines.length} result${medicines.length !== 1 ? 's' : ''} found`;
+    if (!medicines.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="ic">🔍</div>No matching medicines right now. Try a broader search or check back later.</div>`;
+      return;
+    }
+    grid.innerHTML = medicines.map(cardHtml).join('');
+  } catch (e) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Something went wrong: ${e.message}</div>`;
+  }
+}
+
+function cardHtml(m) {
+  const dist = m.distanceKm != null ? `${m.distanceKm.toFixed(1)} km away` : m.location;
+  return `
+  <a class="med-card" href="/medicine-details.html?id=${m.id}" style="color:inherit;">
+    <div class="med-thumb">${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : '💊'}${saveHeartHtml(m.id, savedIds.includes(m.id))}</div>
+    <div class="med-body">
+      <div class="med-title-row"><span class="med-name">${m.name} ${m.strength}</span><span class="match-badge">${m.matchScore}% match</span></div>
+      <div class="med-meta">
+        ${m.verified ? '<span class="badge badge-verified">✓ Verified</span>' : ''}
+        <span>📦 ${qtyLabel(m)}</span>
+        <span>📍 ${dist}</span>
+      </div>
+      <div style="font-size:12px; color:var(--ink-faint);">Shared by ${m.donor?.name || 'a donor'}${m.donor?.rating ? ' · ⭐ ' + m.donor.rating : ''}</div>
+    </div>
+  </a>`;
+}
+
+(async function () {
+  if (!initShell('/find-medicine.html', 'Find Medicine')) return;
+  try { const { user } = await api('/auth/me'); savedIds = user.savedMedicineIds || []; } catch { /* ignore */ }
+  userCoords = await getLocation();
+  search();
+
+  document.getElementById('q').addEventListener('input', () => { clearTimeout(debounceT); debounceT = setTimeout(search, 350); });
+  ['f-type', 'f-distance'].forEach((id) => document.getElementById(id).addEventListener('change', search));
+  document.getElementById('f-verified').addEventListener('change', search);
+})();
+</script>
+</body>
+</html>
